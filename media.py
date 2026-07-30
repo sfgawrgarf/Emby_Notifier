@@ -15,6 +15,24 @@ DEFAULT_IMAGE_URL = os.getenv(
 )
 
 
+def get_emby_primary_image(item, server_url):
+    image_tags = item.get("ImageTags") or {}
+    if image_tags.get("Primary") and item.get("Id"):
+        image_item_id = item["Id"]
+    else:
+        image_item_id = (
+            item.get("PrimaryImageItemId")
+            or item.get("SeasonId")
+            or item.get("SeriesId")
+        )
+    if not image_item_id or not server_url:
+        return DEFAULT_IMAGE_URL
+    return (
+        f"{server_url.rstrip('/')}/Items/{image_item_id}/Images/Primary"
+        "?maxWidth=1000&quality=90"
+    )
+
+
 class IMedia(abc.ABC):
 
     def __init__(self):
@@ -130,6 +148,9 @@ class Movie(IMedia):
         self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
         self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
         self.media_detail_["server_url"] = emby_media_info["Server"]["Url"]
+        emby_image = get_emby_primary_image(
+            movie_item, self.media_detail_["server_url"]
+        )
         self.media_detail_["media_name"] = movie_item["Name"]
         self.media_detail_["media_type"] = "Movie"
         self.media_detail_["media_rating"] = movie_item.get("CommunityRating", 0)
@@ -138,8 +159,8 @@ class Movie(IMedia):
             "Overview", "暂无简介"
         )
         self.media_detail_["media_tmdburl"] = self.media_detail_["server_url"]
-        self.media_detail_["media_poster"] = DEFAULT_IMAGE_URL
-        self.media_detail_["media_backdrop"] = DEFAULT_IMAGE_URL
+        self.media_detail_["media_poster"] = emby_image
+        self.media_detail_["media_backdrop"] = emby_image
         log.logger.debug(self.info_)
 
     def send_caption(self):
@@ -160,12 +181,12 @@ class Movie(IMedia):
         poster, err = tmdb_api.get_movie_poster(self.info_["ProviderIds"]["Tmdb"])
         if err:
             log.logger.warning(f"{err} Using fallback image.")
-            poster = DEFAULT_IMAGE_URL
+            poster = self.media_detail_["media_poster"]
         
         backdrop, err = tmdb_api.get_movie_backdrop_path(self.info_["ProviderIds"]["Tmdb"])
         if err:
             log.logger.warning(f"{err} Using fallback image.")
-            backdrop = poster
+            backdrop = self.media_detail_["media_backdrop"] or poster
 
         self.media_detail_["media_name"] = movie_details["title"]
         self.media_detail_["media_type"] = "Movie"
@@ -213,6 +234,9 @@ class Episode(IMedia):
         self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
         self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
         self.media_detail_["server_url"] = emby_media_info["Server"]["Url"]
+        emby_image = get_emby_primary_image(
+            episode_item, self.media_detail_["server_url"]
+        )
         self.media_detail_["media_name"] = episode_item["SeriesName"]
         self.media_detail_["media_type"] = "Episode"
         self.media_detail_["media_rating"] = episode_item.get(
@@ -223,8 +247,8 @@ class Episode(IMedia):
             "Overview", episode_item.get("Name", "暂无简介")
         )
         self.media_detail_["media_tmdburl"] = self.media_detail_["server_url"]
-        self.media_detail_["media_poster"] = DEFAULT_IMAGE_URL
-        self.media_detail_["media_still"] = DEFAULT_IMAGE_URL
+        self.media_detail_["media_poster"] = emby_image
+        self.media_detail_["media_still"] = emby_image
         self.media_detail_["tv_season"] = self.info_["Season"]
         self.media_detail_["tv_episode"] = self.info_["Series"]
         self.media_detail_["tv_episode_name"] = episode_item.get("Name", "")
@@ -259,7 +283,7 @@ class Episode(IMedia):
         )
         if err:
             log.logger.warning(f"{err} Using fallback image.")
-            poster = DEFAULT_IMAGE_URL
+            poster = self.media_detail_["media_poster"]
         
         still, err = tmdb_api.get_tv_episode_still_paths(self.info_["ProviderIds"]["Tmdb"], self.info_["Season"], self.info_["Series"])
         if err:

@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 os.environ["WECHAT_MSG_TYPE"] = "news"
+os.environ["EMBY_PUBLIC_URL"] = "https://avemby.aabbss.de"
 
 from sender import WechatAppSender, truncate_utf8
 import json
@@ -15,6 +16,17 @@ class WechatNewsTest(unittest.TestCase):
         result = truncate_utf8(value, 500)
         self.assertLessEqual(len(result.encode("utf-8")), 500)
         self.assertIn("Master_Piece_", result)
+
+    def test_emby_primary_image_uses_public_item_image(self):
+        result = media.get_emby_primary_image(
+            {"Id": "20450", "ImageTags": {"Primary": "tag"}},
+            "https://avemby.aabbss.de",
+        )
+        self.assertEqual(
+            result,
+            "https://avemby.aabbss.de/Items/20450/Images/Primary"
+            "?maxWidth=1000&quality=90",
+        )
 
     @patch("sender.wxapp.send_news")
     def test_news_payload_keeps_title_characters_and_limits_description(self, send_news):
@@ -55,6 +67,8 @@ class WechatNewsTest(unittest.TestCase):
                 "IndexNumber": 1,
                 "ParentIndexNumber": 1,
                 "ProviderIds": {},
+                "Id": "20450",
+                "ImageTags": {"Primary": "tag"},
             },
             "Server": {
                 "Name": "Emby",
@@ -68,7 +82,11 @@ class WechatNewsTest(unittest.TestCase):
         self.assertEqual(payload["media_name"], "TMDB 无结果的剧集")
         self.assertEqual(payload["tv_season"], 1)
         self.assertEqual(payload["tv_episode"], 1)
-        self.assertTrue(payload["media_still"].startswith("https://"))
+        self.assertEqual(
+            payload["media_still"],
+            "https://avemby.aabbss.de/Items/20450/Images/Primary"
+            "?maxWidth=1000&quality=90",
+        )
 
     @patch(
         "media.tmdb_api.get_tv_episode_still_paths",
@@ -114,6 +132,7 @@ class WechatNewsTest(unittest.TestCase):
         episode.info_["Name"] = "缺少图片的剧集"
         episode.info_["Season"] = 1
         episode.info_["Series"] = 2
+        episode.media_detail_["media_poster"] = media.DEFAULT_IMAGE_URL
         episode.media_detail_["media_still"] = media.DEFAULT_IMAGE_URL
 
         episode.get_details()

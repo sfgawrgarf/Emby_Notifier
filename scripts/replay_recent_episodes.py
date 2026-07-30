@@ -59,7 +59,8 @@ query = urllib.parse.urlencode(
         "Limit": "100",
         "Fields": (
             "ProviderIds,PremiereDate,ProductionYear,Overview,"
-            "CommunityRating,DateCreated"
+            "CommunityRating,DateCreated,ImageTags,PrimaryImageItemId,"
+            "SeriesId,SeasonId,SeriesPrimaryImageTag"
         ),
     }
 )
@@ -87,7 +88,10 @@ for item in recent:
         f"- {item.get('SeriesName')} "
         f"S{int(item.get('ParentIndexNumber') or 0):02d}"
         f"E{int(item.get('IndexNumber') or 0):02d} "
-        f"id={item.get('Id')} created={item.get('DateCreated')}"
+        f"id={item.get('Id')} created={item.get('DateCreated')} "
+        f"primary_item={item.get('PrimaryImageItemId')} "
+        f"series_id={item.get('SeriesId')} season_id={item.get('SeasonId')} "
+        f"image_tags={sorted((item.get('ImageTags') or {}).keys())}"
     )
 
 if not args.send:
@@ -112,7 +116,7 @@ for item in recent:
             "Name": server.get("ServerName", "Emby"),
             "Version": server.get("Version", "4.9.3.0"),
             "Url": load_env(ENV_FILE).get(
-                "EMBY_PUBLIC_URL", "https://dm.aabbss.de"
+                "EMBY_PUBLIC_URL", "https://avemby.aabbss.de"
             ),
         },
     }
