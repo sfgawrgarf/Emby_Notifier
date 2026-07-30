@@ -38,10 +38,13 @@ def parse_timestamp(value):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--created-after", required=True)
+parser.add_argument("--created-after")
+parser.add_argument("--item-id", action="append", default=[])
 parser.add_argument("--notifier-url", required=True)
 parser.add_argument("--send", action="store_true")
 args = parser.parse_args()
+if not args.created_after and not args.item_id:
+    parser.error("provide --created-after or at least one --item-id")
 
 api_key = load_env(ENV_FILE).get("EMBY_API_KEY")
 if not api_key:
@@ -62,13 +65,20 @@ query = urllib.parse.urlencode(
 )
 items = get_json(f"{EMBY_API_BASE}/Items?{query}", api_key).get("Items", [])
 server = get_json(f"{EMBY_API_BASE}/System/Info", api_key)
-cutoff = parse_timestamp(args.created_after)
-recent = [
-    item
-    for item in items
-    if item.get("DateCreated")
-    and parse_timestamp(item["DateCreated"]) >= cutoff
-]
+if args.item_id:
+    selected_ids = set(args.item_id)
+    recent = [item for item in items if str(item.get("Id")) in selected_ids]
+    missing_ids = selected_ids - {str(item.get("Id")) for item in recent}
+    if missing_ids:
+        raise RuntimeError(f"Item IDs were not found: {sorted(missing_ids)}")
+else:
+    cutoff = parse_timestamp(args.created_after)
+    recent = [
+        item
+        for item in items
+        if item.get("DateCreated")
+        and parse_timestamp(item["DateCreated"]) >= cutoff
+    ]
 recent.sort(key=lambda item: parse_timestamp(item["DateCreated"]))
 
 print(f"Matched {len(recent)} recent episode(s):")
@@ -77,7 +87,7 @@ for item in recent:
         f"- {item.get('SeriesName')} "
         f"S{int(item.get('ParentIndexNumber') or 0):02d}"
         f"E{int(item.get('IndexNumber') or 0):02d} "
-        f"id={item.get('Id')}"
+        f"id={item.get('Id')} created={item.get('DateCreated')}"
     )
 
 if not args.send:
