@@ -19,6 +19,7 @@ TMDB_MEDIA_TYPES = {
 }
 
 TMDB_LANG = "zh-CN"
+REQUEST_TIMEOUT = (5, 15)
 
 
 def login():
@@ -30,14 +31,14 @@ def login():
     """
     login_url = f"{TMDB_API}/authentication"
     try:
-        response = requests.get(login_url, headers=TMDB_API_HEADERS, timeout=5)
+        response = requests.get(login_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         log.logger.info("TMDB login successful.")
     except requests.exceptions.ConnectionError as e:
         log.logger.error(f"TMDB login failed. Check network connection: {e}")
         raise e
     except requests.exceptions.RequestException as e:
-        log.logger.error(f"TMDB login failed. {response.json()['status_message']} Current API token: {TMDB_API_TOKEN}")
+        log.logger.error(f"TMDB login failed: {type(e).__name__}")
         raise e
 
 
@@ -61,7 +62,7 @@ def search_media(media_type, name, year):
     if year != -1:
         search_url += f"&year={year}"
     try:
-        response = requests.get(search_url, headers=TMDB_API_HEADERS)
+        response = requests.get(search_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json().get("results", []), None
     except requests.exceptions.RequestException as e:
@@ -91,7 +92,7 @@ def get_external_ids(media_type, tmdb_id):
         f"{TMDB_API}/{media_type}/{tmdb_id}/external_ids?language={TMDB_LANG}"
     )
     try:
-        response = requests.get(external_ids_url, headers=TMDB_API_HEADERS)
+        response = requests.get(external_ids_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json(), None
     except requests.exceptions.RequestException as e:
@@ -112,7 +113,7 @@ def get_movie_details(tmdb_id):
     """
     movie_details_url = f"{TMDB_API}/movie/{tmdb_id}?language={TMDB_LANG}"
     try:
-        response = requests.get(movie_details_url, headers=TMDB_API_HEADERS)
+        response = requests.get(movie_details_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json(), None
     except requests.exceptions.RequestException as e:
@@ -158,7 +159,7 @@ def get_tv_season_details(tmdb_id, season_number):
         f"{TMDB_API}/tv/{tmdb_id}/season/{season_number}?language={TMDB_LANG}"
     )
     try:
-        response = requests.get(tv_season_url, headers=TMDB_API_HEADERS)
+        response = requests.get(tv_season_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json(), None
     except requests.exceptions.RequestException as e:
@@ -207,7 +208,7 @@ def get_tv_episode_details(tmdb_id, season_number, episode_number):
     """
     tv_episode_url = f"{TMDB_API}/tv/{tmdb_id}/season/{season_number}/episode/{episode_number}?language={TMDB_LANG}"
     try:
-        response = requests.get(tv_episode_url, headers=TMDB_API_HEADERS)
+        response = requests.get(tv_episode_url, headers=TMDB_API_HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.json(), None
     except requests.exceptions.RequestException as e:

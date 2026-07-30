@@ -310,8 +310,8 @@ def jellyfin_msg_preprocess(msg):
         return jellyfin_msg
     else:
         original_msg["Server"]["Type"] = "Emby"
-        # emby 推送的媒体信息不包含 server url，当前默认直接设置为 https://emby.media
-        original_msg["Server"]["Url"] = "https://emby.media"
+        # Emby 通常不推送 server url；调用方提供时保留，否则使用兼容默认值。
+        original_msg["Server"].setdefault("Url", "https://emby.media")
         return original_msg
 
 

@@ -11,6 +11,16 @@ import traceback
 Sender = None
 
 
+def truncate_utf8(value, max_bytes):
+    value = "" if value is None else str(value)
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    suffix = "…"
+    budget = max_bytes - len(suffix.encode("utf-8"))
+    return encoded[:budget].decode("utf-8", errors="ignore") + suffix
+
+
 class MessageSender:
     def send_welcome(self, welcome: dict):
         raise NotImplementedError
@@ -111,7 +121,7 @@ class WechatAppSender(MessageSender):
                             if media.get("media_type") == "Episode"
                             else ""
                         ),
-                        "desc": f"{media.get('media_intro')}",
+                        "desc": truncate_utf8(media.get("media_intro"), 500),
                     }
                 ],
                 "horizontal_content_list": [
@@ -129,14 +139,12 @@ class WechatAppSender(MessageSender):
             }
             wxapp.send_news_notice(card_details)
         elif msgtype == "news":
+            title = f"[影视更新][{'电影' if media.get('media_type') == 'Movie' else '剧集'}] {media.get('media_name')} ({(media.get('media_rel') or '')[:4]})"
+            if media.get("media_type") == "Episode":
+                title += f" 第 {media.get('tv_season')} 季 | 第 {media.get('tv_episode')} 集"
             article = {
-                "title" : f"[影视更新][{'电影' if media.get('media_type') == 'Movie' else '剧集'}] {media.get('media_name')} ({media.get('media_rel')[:4]})"
-                            + (
-                                f" 第 {media.get('tv_season')} 季 | 第 {media.get('tv_episode')} 集"
-                                if media.get("media_type") == "Episode"
-                                else ""
-                            ),
-                "description" : f"{media.get('media_intro')}",
+                "title" : truncate_utf8(title, 120),
+                "description" : truncate_utf8(media.get("media_intro"), 500),
                 "url" : f"{media.get('media_tmdburl')}",
                 "picurl" : f"{media.get('media_backdrop') if media.get('media_type') == 'Movie' else media.get('media_still')}"
             }

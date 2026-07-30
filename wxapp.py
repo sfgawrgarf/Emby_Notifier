@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 
-import requests, json, os
+import requests, json, os, tempfile
 import time
 import log
 
@@ -23,7 +23,8 @@ TOKEN = {
     "expires_time": None,
 }
 
-TOKEN_FILE = "_tmp_wechat.json"
+TOKEN_FILE = os.getenv("WECHAT_TOKEN_FILE", "/tmp/emby_notifier_wechat_token.json")
+REQUEST_TIMEOUT = (5, 15)
 
 # 获取应用 token 的 url
 GET_TOKEN_URL = (
@@ -58,25 +59,31 @@ def get_access_token():
             return TOKEN["access_token"]
 
     try:
-        res = requests.get(GET_TOKEN_URL)
+        res = requests.get(GET_TOKEN_URL, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(f"{res.text}")
-        log.logger.debug(log.SensitiveData(res.text))
         # Update token
         TOKEN["access_token"] = res.json()["access_token"]
         TOKEN["expires_in"] = res.json()["expires_in"]
         TOKEN["expires_time"] = current_time + TOKEN["expires_in"]
-        log.logger.info(
-            f"Update access token successful. Token: {TOKEN['access_token']}"
-        )
+        log.logger.info("Update access token successful.")
 
-        with open(TOKEN_FILE, "w") as f:
-            json.dump(TOKEN, f)
+        token_dir = os.path.dirname(TOKEN_FILE) or "."
+        os.makedirs(token_dir, exist_ok=True)
+        fd, token_tmp = tempfile.mkstemp(prefix=".wechat-token-", dir=token_dir)
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(TOKEN, f)
+            os.chmod(token_tmp, 0o600)
+            os.replace(token_tmp, TOKEN_FILE)
+        finally:
+            if os.path.exists(token_tmp):
+                os.unlink(token_tmp)
 
         return TOKEN["access_token"]
-    except requests.exceptions.ConnectionError as e:
-        log.logger.error(f"Get access token failed. Check network connection: {e}")
+    except requests.exceptions.RequestException as e:
+        log.logger.error(f"Get access token failed: {type(e).__name__}")
         raise e
     except Exception as e:
         log.logger.error(f"Get access token failed. Error: {e}")
@@ -97,7 +104,7 @@ def send_text(content):
     
     send_msg_url = SEND_MSG_URL + get_access_token()
     try:
-        res = requests.post(send_msg_url, json=payload)
+        res = requests.post(send_msg_url, json=payload, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(res.text)
@@ -125,7 +132,7 @@ def send_markdown(content):
 
     send_msg_url = SEND_MSG_URL + get_access_token()
     try:
-        res = requests.post(send_msg_url, json=payload)
+        res = requests.post(send_msg_url, json=payload, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(res.text)
@@ -151,7 +158,7 @@ def send_news(article):
 
     send_msg_url = SEND_MSG_URL + get_access_token()
     try:
-        res = requests.post(send_msg_url, json=payload)
+        res = requests.post(send_msg_url, json=payload, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(f"Send news failed. {res.text}")
@@ -176,7 +183,7 @@ def send_news_notice(card_detail):
 
     send_msg_url = SEND_MSG_URL + get_access_token()
     try:
-        res = requests.post(send_msg_url, json=payload)
+        res = requests.post(send_msg_url, json=payload, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(f"Send news notice failed. {res.text}")
@@ -229,7 +236,7 @@ def send_welcome_card(welcome):
 
     send_msg_url = SEND_MSG_URL + get_access_token()
     try:
-        res = requests.post(send_msg_url, json=payload)
+        res = requests.post(send_msg_url, json=payload, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(f"{res.text}")
