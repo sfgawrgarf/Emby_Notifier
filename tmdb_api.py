@@ -188,7 +188,7 @@ def get_tv_season_poster(tmdb_id, season_number):
         if poster_path:
             poster_url = f"{TMDB_IMAGE_DOMAIN}/t/p/w500{poster_path}"
             return poster_url, None
-        return None, "No poster path found for TV {tmdb_id} season {season_number}."
+        return None, f"No poster path found for TV {tmdb_id} season {season_number}."
     return None, err_info
 
 

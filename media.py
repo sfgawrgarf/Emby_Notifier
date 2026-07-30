@@ -9,6 +9,11 @@ from sender import Sender
 
 from datetime import datetime
 
+DEFAULT_IMAGE_URL = os.getenv(
+    "DEFAULT_IMAGE_URL",
+    "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png",
+)
+
 
 class IMedia(abc.ABC):
 
@@ -60,8 +65,23 @@ class IMedia(abc.ABC):
             self.info_["Type"], self.info_["Name"], self.info_["PremiereYear"]
         )
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(err)
+            return False
+        if not medias and self.info_["PremiereYear"] != -1:
+            log.logger.warning(
+                f"No TMDB results with year {self.info_['PremiereYear']}; retrying without year."
+            )
+            medias, err = tmdb_api.search_media(
+                self.info_["Type"], self.info_["Name"], -1
+            )
+            if err:
+                log.logger.warning(err)
+                return False
+        if not medias:
+            log.logger.warning(
+                f"No TMDB results for {self.info_['Name']}; using Emby metadata."
+            )
+            return False
         Tvdb_id = self.info_["ProviderIds"].get("Tvdb", "-1")
         for m in medias:
             ext_ids, err = tmdb_api.get_external_ids(self.info_["Type"], m["id"])
@@ -72,12 +92,13 @@ class IMedia(abc.ABC):
                 self.info_["ProviderIds"]["Tmdb"] = str(m["id"])
                 break
         if "Tmdb" not in self.info_["ProviderIds"]:
-            log.logger.warn(f"No matched media found for {self.info_['Name']} {self.info_['PremiereYear']} in TMDB.")
+            log.logger.warning(f"No matched media found for {self.info_['Name']} {self.info_['PremiereYear']} in TMDB.")
             if self.info_["Type"] == "Movie":
-                log.logger.warn(f"Use the first search result: {medias[0]['title']} {medias[0]['release_date'][:4]}.")
+                log.logger.warning(f"Use the first search result: {medias[0].get('title', self.info_['Name'])} {(medias[0].get('release_date') or '')[:4]}.")
             else:
-                log.logger.warn(f"Use the first search result: {medias[0]['original_name']} {medias[0]['first_air_date'][:4]}.")
+                log.logger.warning(f"Use the first search result: {medias[0].get('original_name', self.info_['Name'])} {(medias[0].get('first_air_date') or '')[:4]}.")
             self.info_["ProviderIds"]["Tmdb"] = medias[0]["id"]
+        return True
 
 
 class Movie(IMedia):
@@ -91,21 +112,34 @@ class Movie(IMedia):
     def parse_info(self, emby_media_info):
         movie_item = emby_media_info["Item"]
         self.info_["Name"] = movie_item["Name"]
+        premiere_date = movie_item.get("PremiereDate") or str(
+            movie_item.get("ProductionYear") or datetime.now().year
+        )
         self.info_["PremiereYear"] = (
-            int(movie_item["PremiereDate"])
-            if movie_item["PremiereDate"].isdigit()
+            int(premiere_date)
+            if premiere_date.isdigit()
             else (
                 datetime.fromisoformat(
-                    movie_item["PremiereDate"].replace("Z", "+00:00")
+                    premiere_date.replace("Z", "+00:00")
                 ).year
                 if my_utils.emby_version_check(emby_media_info["Server"]["Version"])
-                else my_utils.iso8601_convert_CST(movie_item["PremiereDate"]).year
+                else my_utils.iso8601_convert_CST(premiere_date).year
             )
         )
-        self.info_["ProviderIds"] = movie_item["ProviderIds"]
+        self.info_["ProviderIds"] = movie_item.get("ProviderIds") or {}
         self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
         self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
         self.media_detail_["server_url"] = emby_media_info["Server"]["Url"]
+        self.media_detail_["media_name"] = movie_item["Name"]
+        self.media_detail_["media_type"] = "Movie"
+        self.media_detail_["media_rating"] = movie_item.get("CommunityRating", 0)
+        self.media_detail_["media_rel"] = premiere_date
+        self.media_detail_["media_intro"] = movie_item.get(
+            "Overview", "暂无简介"
+        )
+        self.media_detail_["media_tmdburl"] = self.media_detail_["server_url"]
+        self.media_detail_["media_poster"] = DEFAULT_IMAGE_URL
+        self.media_detail_["media_backdrop"] = DEFAULT_IMAGE_URL
         log.logger.debug(self.info_)
 
     def send_caption(self):
@@ -113,24 +147,25 @@ class Movie(IMedia):
 
     def get_details(self):
         if "Tmdb" not in self.info_["ProviderIds"]:
-            self._get_id()
+            if not self._get_id():
+                return
 
         movie_details, err = tmdb_api.get_movie_details(
             self.info_["ProviderIds"]["Tmdb"]
         )
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(f"{err} Using Emby metadata.")
+            return
         
         poster, err = tmdb_api.get_movie_poster(self.info_["ProviderIds"]["Tmdb"])
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(f"{err} Using fallback image.")
+            poster = DEFAULT_IMAGE_URL
         
         backdrop, err = tmdb_api.get_movie_backdrop_path(self.info_["ProviderIds"]["Tmdb"])
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(f"{err} Using fallback image.")
+            backdrop = poster
 
         self.media_detail_["media_name"] = movie_details["title"]
         self.media_detail_["media_type"] = "Movie"
@@ -154,27 +189,45 @@ class Episode(IMedia):
     def parse_info(self, emby_media_info):
         episode_item = emby_media_info["Item"]
         self.info_["Name"] = episode_item["SeriesName"]
+        premiere_date = episode_item.get("PremiereDate") or str(
+            episode_item.get("ProductionYear") or datetime.now().year
+        )
         try:
             self.info_["PremiereYear"] = (
-                int(episode_item["PremiereDate"])
-                if episode_item["PremiereDate"].isdigit()
+                int(premiere_date)
+                if premiere_date.isdigit()
                 else (
                     datetime.fromisoformat(
-                        episode_item["PremiereDate"].replace("Z", "+00:00")
+                        premiere_date.replace("Z", "+00:00")
                     ).year
                     if my_utils.emby_version_check(emby_media_info["Server"]["Version"])
-                    else my_utils.iso8601_convert_CST(episode_item["PremiereDate"]).year
+                    else my_utils.iso8601_convert_CST(premiere_date).year
                 )
             )
         except Exception as e:
             log.logger.error(e)
             self.info_["PremiereYear"] = -1
-        self.info_["ProviderIds"] = episode_item["ProviderIds"]
+        self.info_["ProviderIds"] = episode_item.get("ProviderIds") or {}
         self.info_["Series"] = episode_item["IndexNumber"]
         self.info_["Season"] = episode_item["ParentIndexNumber"]
         self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
         self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
         self.media_detail_["server_url"] = emby_media_info["Server"]["Url"]
+        self.media_detail_["media_name"] = episode_item["SeriesName"]
+        self.media_detail_["media_type"] = "Episode"
+        self.media_detail_["media_rating"] = episode_item.get(
+            "CommunityRating", 0
+        )
+        self.media_detail_["media_rel"] = premiere_date
+        self.media_detail_["media_intro"] = episode_item.get(
+            "Overview", episode_item.get("Name", "暂无简介")
+        )
+        self.media_detail_["media_tmdburl"] = self.media_detail_["server_url"]
+        self.media_detail_["media_poster"] = DEFAULT_IMAGE_URL
+        self.media_detail_["media_still"] = DEFAULT_IMAGE_URL
+        self.media_detail_["tv_season"] = self.info_["Season"]
+        self.media_detail_["tv_episode"] = self.info_["Series"]
+        self.media_detail_["tv_episode_name"] = episode_item.get("Name", "")
         log.logger.debug(self.info_)
 
     def get_details(self):
@@ -190,22 +243,23 @@ class Episode(IMedia):
             # remove
             self.info_["ProviderIds"].pop("Tmdb")
 
-        self._get_id()
+        if not self._get_id():
+            return
         tv_details, err = tmdb_api.get_tv_episode_details(
             self.info_["ProviderIds"]["Tmdb"],
             self.info_["Season"],
             self.info_["Series"],
         )
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(f"{err} Using Emby metadata.")
+            return
         
         poster, err = tmdb_api.get_tv_season_poster(
             self.info_["ProviderIds"]["Tmdb"], self.info_["Season"]
         )
         if err:
-            log.logger.error(err)
-            raise Exception(err)
+            log.logger.warning(f"{err} Using fallback image.")
+            poster = DEFAULT_IMAGE_URL
         
         still, err = tmdb_api.get_tv_episode_still_paths(self.info_["ProviderIds"]["Tmdb"], self.info_["Season"], self.info_["Series"])
         if err:
@@ -226,15 +280,27 @@ class Episode(IMedia):
         
         self.media_detail_["media_name"] = self.info_["Name"]
         self.media_detail_["media_type"] = "Episode"
-        self.media_detail_["media_rating"] = tv_details["vote_average"]
-        self.media_detail_["media_rel"] = tv_details["air_date"]
-        self.media_detail_["media_intro"] = tv_details["overview"]
+        self.media_detail_["media_rating"] = tv_details.get(
+            "vote_average", self.media_detail_["media_rating"]
+        )
+        self.media_detail_["media_rel"] = tv_details.get(
+            "air_date", self.media_detail_["media_rel"]
+        )
+        self.media_detail_["media_intro"] = tv_details.get(
+            "overview", self.media_detail_["media_intro"]
+        )
         self.media_detail_["media_tmdburl"] = f"https://www.themoviedb.org/tv/{self.info_['ProviderIds']['Tmdb']}?language=zh-CN"
         self.media_detail_["media_poster"] = poster
         self.media_detail_["media_still"] = still
-        self.media_detail_["tv_season"] = tv_details["season_number"]
-        self.media_detail_["tv_episode"] = tv_details["episode_number"]
-        self.media_detail_["tv_episode_name"] = tv_details["name"]
+        self.media_detail_["tv_season"] = tv_details.get(
+            "season_number", self.info_["Season"]
+        )
+        self.media_detail_["tv_episode"] = tv_details.get(
+            "episode_number", self.info_["Series"]
+        )
+        self.media_detail_["tv_episode_name"] = tv_details.get(
+            "name", self.media_detail_["tv_episode_name"]
+        )
         log.logger.debug(self.media_detail_)
 
 
@@ -310,8 +376,10 @@ def jellyfin_msg_preprocess(msg):
         return jellyfin_msg
     else:
         original_msg["Server"]["Type"] = "Emby"
-        # Emby 通常不推送 server url；调用方提供时保留，否则使用兼容默认值。
-        original_msg["Server"].setdefault("Url", "https://emby.media")
+        # Emby 通常不推送 server url；调用方提供时保留，否则使用部署配置。
+        original_msg["Server"].setdefault(
+            "Url", os.getenv("EMBY_PUBLIC_URL", "https://emby.media")
+        )
         return original_msg
 
 

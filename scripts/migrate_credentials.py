@@ -51,6 +51,7 @@ values = {
     "TZ": "Asia/Shanghai",
     "TMDB_API_TOKEN": require_env_value(tmdb_token, "TMDB_API_TOKEN"),
     "TMDB_IMAGE_DOMAIN": "https://image.tmdb.org",
+    "EMBY_PUBLIC_URL": "https://dm.aabbss.de",
     "WECHAT_CORP_ID": require_env_value(wechat.get("WECHAT_COR_PID"), "WECHAT_CORP_ID"),
     "WECHAT_CORP_SECRET": require_env_value(
         wechat.get("WECHAT_APP_SECRET"), "WECHAT_CORP_SECRET"

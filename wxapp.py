@@ -162,7 +162,7 @@ def send_news(article):
         res.raise_for_status()
         if res.json()["errcode"] != 0:
             raise Exception(f"Send news failed. {res.text}")
-        log.logger.debug(f"Send news successful. Response: {res.json()}")
+        log.logger.info("Send news successful.")
     except requests.exceptions.ConnectionError as e:
         log.logger.error(f"Send news failed. Check network connection: {e}")
         raise e
