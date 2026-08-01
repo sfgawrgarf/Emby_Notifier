@@ -23,13 +23,14 @@ v2.0.0 版本现已支持 Jellyfin Server！！！详细配置请参看章节 [J
 
 ## Contributors
 
-[![Contributors](http://contrib.nn.ci/api?repo=Ccccx159/Emby_Notifier)](https://github.com/Ccccx159/Emby_Notifier/graphs/contributors)
+[![Contributors](http://contrib.nn.ci/api?repo=sfgawrgarf/Emby_Notifier)](https://github.com/sfgawrgarf/Emby_Notifier/graphs/contributors)
 
 ## 修订版本
 
 
 | 版本 | 日期 | 修订说明 |
 | ----- | ----- | ----- |
+| v1.1.0 | 2026.08.01 | <li>1. 加固企业微信通知器部署、凭据和网络请求处理；</li><li>2. TMDB 元数据或图片缺失时使用 Emby 元数据与封面继续推送；</li><li>3. 支持 Emby 整季批量入库事件，并显示实际集数范围，例如 `S01E01-E10`；</li><li>4. 增加安全的 Emby API 配置迁移及定向剧集通知回放工具。</li> |
 | v4.1.0 | 2025.04.10 | <li>1. 微信增加图文消息类型支持；</li><li>2. 优化 TVDB_API_KEY 未配置时仍然查询TVDB导致报错的问题；</li><li>3. 修复 BARK_DEVICE_KEYS 未配置时启动报错的问题</li><li>4. 修改readme中TG变量说明</li> |
 | v4.0.1 | 2025.02.05 | <li>1. 环境校验补充增加 bark 参数检查；</li><li>2. 修复仅配置 bark sender 时配置校验失败问题；</li><li>3. 修改 wechat token 缓存文件命名，并修改 git ignore 文件</li> |
 | v4.0.0 | 2025.01.31 | <li>1. 新增 bark 推送支持，详细配置请参看 [bark 官网](https://bark.day.app/#/)；</li> |
