@@ -40,6 +40,10 @@ async def handle_post(request):
     return web.Response()
 
 
+async def handle_health(request):
+    return web.json_response({"status": "ok"})
+
+
 async def my_httpd():
     # 创建消息队列
     msg_queue = asyncio.Queue()
@@ -50,6 +54,7 @@ async def my_httpd():
 
     # 添加路由，自定义 post 处理函数
     app.router.add_post("/", handle_post)
+    app.router.add_get("/health", handle_health)
 
     # 创建 worker 任务协程
     worker_task = asyncio.create_task(worker(msg_queue))

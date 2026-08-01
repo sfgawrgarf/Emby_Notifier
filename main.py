@@ -52,21 +52,24 @@ def welcome():
     print("\033[0m")
 
 def env_check():
+    def configured(name):
+        return "<configured>" if os.getenv(name) else "<not configured>"
+
     print(f"{'Checking environment variables...':<30}")
     print("\n--------Media Database info:")
-    print(f"{'TMDB_API_TOKEN:':<15} {'(req)'} {os.getenv('TMDB_API_TOKEN', 'None')}")
-    print(f"{'TVDB_API_KEY:':<15} {'(opt)'} {os.getenv('TVDB_API_KEY', 'None')}")
+    print(f"{'TMDB_API_TOKEN:':<20} {'(req)'} {configured('TMDB_API_TOKEN')}")
+    print(f"{'TVDB_API_KEY:':<20} {'(opt)'} {configured('TVDB_API_KEY')}")
     print("\n--------Telegram Bot info:")
-    print(f"{'TG_BOT_TOKEN:':<15} {'(req)'} {os.getenv('TG_BOT_TOKEN', 'None')}")
-    print(f"{'TG_CHAT_ID:':<15} {'(req)'} {os.getenv('TG_CHAT_ID', 'None')}")
+    print(f"{'TG_BOT_TOKEN:':<20} {'(req)'} {configured('TG_BOT_TOKEN')}")
+    print(f"{'TG_CHAT_ID:':<20} {'(req)'} {configured('TG_CHAT_ID')}")
     print("\n--------Wechat App info:")
-    print(f"{'WECHAT_CORP_ID:':<15} {'(req)'} {os.getenv('WECHAT_CORP_ID', 'None')}")
-    print(f"{'WECHAT_CORP_SECRET:':<15} {'(req)'} {os.getenv('WECHAT_CORP_SECRET', 'None')}")
-    print(f"{'WECHAT_AGENT_ID:':<15} {'(req)'} {os.getenv('WECHAT_AGENT_ID', 'None')}")
-    print(f"{'WECHAT_USER_ID:':<15} {'(req)'} {os.getenv('WECHAT_USER_ID', 'None')}")
+    print(f"{'WECHAT_CORP_ID:':<20} {'(req)'} {configured('WECHAT_CORP_ID')}")
+    print(f"{'WECHAT_CORP_SECRET:':<20} {'(req)'} {configured('WECHAT_CORP_SECRET')}")
+    print(f"{'WECHAT_AGENT_ID:':<20} {'(req)'} {configured('WECHAT_AGENT_ID')}")
+    print(f"{'WECHAT_USER_ID:':<20} {'(req)'} {configured('WECHAT_USER_ID')}")
     print("\n--------Bark Server info:")
-    print(f"{'BARK_SERVER:':<15} {'(opt)'} {os.getenv('BARK_SERVER', 'https://api.day.app')}")
-    print(f"{'BARK_DEVICE_KEYS:':<15} {'(opt)'} {os.getenv('BARK_DEVICE_KEYS', 'None')}")
+    print(f"{'BARK_SERVER:':<20} {'(opt)'} {os.getenv('BARK_SERVER', 'https://api.day.app')}")
+    print(f"{'BARK_DEVICE_KEYS:':<20} {'(opt)'} {configured('BARK_DEVICE_KEYS')}")
     print("\n--------Log info:")
     print(f"{'LOG_LEVEL:':<15} {'(opt)'} {os.getenv('LOG_LEVEL', 'INFO')}")
     print(f"{'LOG_EXPORT:':<15} {'(opt)'} {os.getenv('LOG_EXPORT', 'False')}")
@@ -114,10 +117,10 @@ def require_check():
         else:
             log.logger.warning("No TG_BOT_TOKEN or TG_CHAT_ID found.")
 
-        # send welcome message
         global Sender
         sender.Sender = sender.SenderManager()
-        sender.Sender.send_welcome(CONTENT)
+        if os.getenv("SEND_WELCOME", "False").lower() == "true":
+            sender.Sender.send_welcome(CONTENT)
 
     except Exception as e:
         log.logger.error(e)
