@@ -35,6 +35,8 @@ def load_env(path):
     return values
 
 
+existing = load_env(TARGET) if TARGET.exists() else {}
+
 with sqlite3.connect(CMS_DB) as conn:
     row = conn.execute(
         "SELECT config_json FROM cms_config WHERE key = ?", ("message",)
@@ -43,8 +45,21 @@ if not row:
     raise RuntimeError("CMS message configuration was not found")
 
 wechat = json.loads(row[0]).get("wechat", {})
-if not wechat.get("WECHAT_STATUS"):
-    raise RuntimeError("CMS WeChat configuration is not enabled")
+if wechat.get("WECHAT_STATUS"):
+    wechat_values = {
+        "WECHAT_CORP_ID": wechat.get("WECHAT_COR_PID"),
+        "WECHAT_CORP_SECRET": wechat.get("WECHAT_APP_SECRET"),
+        "WECHAT_AGENT_ID": wechat.get("WECHAT_APP_ID"),
+    }
+else:
+    wechat_values = {
+        key: existing.get(key)
+        for key in (
+            "WECHAT_CORP_ID",
+            "WECHAT_CORP_SECRET",
+            "WECHAT_AGENT_ID",
+        )
+    }
 
 with sqlite3.connect(MHTI_DB) as conn:
     row = conn.execute(
@@ -68,12 +83,14 @@ values = {
     "EMBY_API_KEY": require_env_value(
         load_env(EMBY_ENV).get("EMBY_API_KEY"), "EMBY_API_KEY"
     ),
-    "WECHAT_CORP_ID": require_env_value(wechat.get("WECHAT_COR_PID"), "WECHAT_CORP_ID"),
+    "WECHAT_CORP_ID": require_env_value(
+        wechat_values.get("WECHAT_CORP_ID"), "WECHAT_CORP_ID"
+    ),
     "WECHAT_CORP_SECRET": require_env_value(
-        wechat.get("WECHAT_APP_SECRET"), "WECHAT_CORP_SECRET"
+        wechat_values.get("WECHAT_CORP_SECRET"), "WECHAT_CORP_SECRET"
     ),
     "WECHAT_AGENT_ID": require_env_value(
-        wechat.get("WECHAT_APP_ID"), "WECHAT_AGENT_ID"
+        wechat_values.get("WECHAT_AGENT_ID"), "WECHAT_AGENT_ID"
     ),
     "WECHAT_USER_ID": "@all",
     "WECHAT_MSG_TYPE": "news",
