@@ -88,8 +88,17 @@ class WechatNewsTest(unittest.TestCase):
             "?maxWidth=1000&quality=90",
         )
 
+    @patch(
+        "media.get_recent_series_episodes",
+        return_value=[
+            {"ParentIndexNumber": 1, "IndexNumber": episode}
+            for episode in range(1, 11)
+        ],
+    )
     @patch("media.sender.Sender")
-    def test_series_batch_event_sends_one_card(self, sender_manager):
+    def test_series_batch_event_sends_one_card(
+        self, sender_manager, get_recent_series_episodes
+    ):
         event = {
             "Title": "酸菜鱼 上已添加了 10 项到 金特务：本色回归",
             "Event": "library.new",
@@ -115,6 +124,8 @@ class WechatNewsTest(unittest.TestCase):
         self.assertEqual(payload["media_type"], "Series")
         self.assertEqual(payload["media_name"], "金特务：本色回归")
         self.assertEqual(payload["batch_count"], 10)
+        self.assertEqual(payload["episode_range"], "S01E01-E10")
+        get_recent_series_episodes.assert_called_once_with("22678", 10)
         self.assertEqual(
             payload["media_tmdburl"],
             "https://www.themoviedb.org/tv/296206?language=zh-CN",
@@ -138,13 +149,29 @@ class WechatNewsTest(unittest.TestCase):
             "media_tmdburl": "https://www.themoviedb.org/tv/296206",
             "media_still": "https://avemby.aabbss.de/Items/22678/Images/Primary",
             "batch_count": 10,
+            "episode_range": "S01E01-E10",
         }
 
         WechatAppSender().send_media_details(payload)
 
         article = send_news.call_args.args[0]
         self.assertIn("[剧集批量]", article["title"])
-        self.assertIn("本次入库 10 集", article["title"])
+        self.assertIn("集数：S01E01-E10", article["title"])
+        self.assertNotIn("本次入库 10 集", article["title"])
+
+    def test_episode_ranges_preserve_gaps_and_multiple_seasons(self):
+        episodes = [
+            {"ParentIndexNumber": 2, "IndexNumber": 2},
+            {"ParentIndexNumber": 1, "IndexNumber": 3},
+            {"ParentIndexNumber": 1, "IndexNumber": 1},
+            {"ParentIndexNumber": 2, "IndexNumber": 1},
+            {"ParentIndexNumber": 1, "IndexNumber": 1},
+        ]
+
+        self.assertEqual(
+            media.format_episode_ranges(episodes),
+            "S01E01、S01E03、S02E01-E02",
+        )
 
     @patch(
         "media.tmdb_api.get_tv_episode_still_paths",

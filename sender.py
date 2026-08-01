@@ -32,6 +32,9 @@ def media_type_label(media_type):
 def batch_summary(media):
     if media.get("media_type") != "Series":
         return ""
+    episode_range = media.get("episode_range")
+    if episode_range:
+        return f"集数：{episode_range}"
     count = media.get("batch_count")
     return f"本次入库 {count} 集" if count else "本次批量入库"
 

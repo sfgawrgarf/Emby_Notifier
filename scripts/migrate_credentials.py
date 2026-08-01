@@ -14,6 +14,7 @@ CMS_DB = Path("/root/cms/config/cms-online.db")
 MHTI_DB = Path("/root/mhti/data/scraper.db")
 MHTI_KEY = Path("/root/mhti/data/.secret_key")
 TARGET = Path("/root/emby/.env.emby-notifier-wechat")
+EMBY_ENV = Path("/root/emby/.env.embynotice")
 
 
 def require_env_value(value, name):
@@ -21,6 +22,17 @@ def require_env_value(value, name):
     if not value or "\n" in value or "\r" in value:
         raise RuntimeError(f"{name} is missing or invalid")
     return value
+
+
+def load_env(path):
+    values = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
 
 
 with sqlite3.connect(CMS_DB) as conn:
@@ -52,6 +64,10 @@ values = {
     "TMDB_API_TOKEN": require_env_value(tmdb_token, "TMDB_API_TOKEN"),
     "TMDB_IMAGE_DOMAIN": "https://image.tmdb.org",
     "EMBY_PUBLIC_URL": "https://avemby.aabbss.de",
+    "EMBY_API_URL": "http://emby:8096",
+    "EMBY_API_KEY": require_env_value(
+        load_env(EMBY_ENV).get("EMBY_API_KEY"), "EMBY_API_KEY"
+    ),
     "WECHAT_CORP_ID": require_env_value(wechat.get("WECHAT_COR_PID"), "WECHAT_CORP_ID"),
     "WECHAT_CORP_SECRET": require_env_value(
         wechat.get("WECHAT_APP_SECRET"), "WECHAT_CORP_SECRET"

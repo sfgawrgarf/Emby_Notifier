@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 import os
 import abc, json, re, time
-import my_utils, tmdb_api, tvdb_api, tgbot
+import my_utils, tmdb_api, tvdb_api, tgbot, requests
 import log
 import sender
 from sender import Sender
@@ -33,6 +33,76 @@ def get_batch_item_count(emby_media_info):
         flags=re.IGNORECASE,
     )
     return int(match.group(1)) if match else None
+
+
+def get_recent_series_episodes(series_id, item_count):
+    api_key = os.getenv("EMBY_API_KEY")
+    api_url = os.getenv("EMBY_API_URL", "http://emby:8096").rstrip("/")
+    if not api_key:
+        log.logger.warning(
+            "EMBY_API_KEY is not configured; cannot resolve batch episode range."
+        )
+        return []
+    if not series_id or not item_count:
+        return []
+
+    try:
+        response = requests.get(
+            f"{api_url}/Items",
+            headers={"X-Emby-Token": api_key},
+            params={
+                "ParentId": series_id,
+                "Recursive": "true",
+                "IncludeItemTypes": "Episode",
+                "SortBy": "DateCreated",
+                "SortOrder": "Descending",
+                "Limit": item_count,
+                "Fields": "DateCreated",
+            },
+            timeout=(3, 10),
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+    except (requests.RequestException, ValueError) as exc:
+        log.logger.warning(
+            "Failed to resolve batch episode range from Emby: %s",
+            type(exc).__name__,
+        )
+        return []
+
+
+def group_episode_numbers(episodes):
+    seasons = {}
+    for episode in episodes:
+        try:
+            season_number = int(episode.get("ParentIndexNumber"))
+            episode_number = int(episode.get("IndexNumber"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        seasons.setdefault(season_number, set()).add(episode_number)
+    return seasons
+
+
+def format_episode_ranges(episodes):
+    seasons = group_episode_numbers(episodes)
+
+    ranges = []
+    for season_number in sorted(seasons):
+        numbers = sorted(seasons[season_number])
+        if not numbers:
+            continue
+        start = previous = numbers[0]
+        for number in numbers[1:] + [None]:
+            if number is not None and number == previous + 1:
+                previous = number
+                continue
+            prefix = f"S{season_number:02d}E{start:02d}"
+            ranges.append(
+                prefix if start == previous else f"{prefix}-E{previous:02d}"
+            )
+            if number is not None:
+                start = previous = number
+    return "、".join(ranges)
 
 
 def get_emby_primary_image(item, server_url):
@@ -376,6 +446,7 @@ class SeriesBatch(IMedia):
         emby_image = get_emby_primary_image(series_item, server_url)
 
         self.info_["Name"] = series_name
+        self.info_["Id"] = series_item.get("Id")
         self.info_["ProviderIds"] = provider_ids
         self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
         self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
@@ -401,12 +472,26 @@ class SeriesBatch(IMedia):
         self.media_detail_["batch_count"] = get_batch_item_count(
             emby_media_info
         )
+        self.media_detail_["episode_range"] = ""
         log.logger.debug(self.info_)
 
     def get_details(self):
-        # Series-level Emby events already contain the metadata needed for a
-        # single batch card. Avoid turning one batch into many TMDB requests.
-        return
+        item_count = self.media_detail_.get("batch_count")
+        episodes = get_recent_series_episodes(
+            self.info_.get("Id"), item_count
+        )
+        episode_range = format_episode_ranges(episodes)
+        resolved_count = sum(
+            len(values) for values in group_episode_numbers(episodes).values()
+        )
+        if episode_range and resolved_count == item_count:
+            self.media_detail_["episode_range"] = episode_range
+        elif episodes:
+            log.logger.warning(
+                "Resolved %s unique episode(s), expected %s; using count fallback.",
+                resolved_count,
+                item_count,
+            )
 
     def send_caption(self):
         sender.Sender.send_media_details(self.media_detail_)
