@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 import os
-import abc, json, time
+import abc, json, re, time
 import my_utils, tmdb_api, tvdb_api, tgbot
 import log
 import sender
@@ -13,6 +13,26 @@ DEFAULT_IMAGE_URL = os.getenv(
     "DEFAULT_IMAGE_URL",
     "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png",
 )
+
+
+def get_batch_item_count(emby_media_info):
+    item = emby_media_info.get("Item") or {}
+    for field in ("ItemCount", "RecursiveItemCount", "ChildCount"):
+        value = item.get(field)
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            return count
+
+    title = str(emby_media_info.get("Title") or "")
+    match = re.search(
+        r"(?:已添加了|added)\s*(\d+)\s*(?:项|items?)",
+        title,
+        flags=re.IGNORECASE,
+    )
+    return int(match.group(1)) if match else None
 
 
 def get_emby_primary_image(item, server_url):
@@ -332,11 +352,73 @@ class Episode(IMedia):
         sender.Sender.send_media_details(self.media_detail_)
 
 
+class SeriesBatch(IMedia):
+    def __init__(self):
+        super().__init__()
+        self.info_["Type"] = "Series"
+
+    def __str__(self) -> str:
+        return json.dumps(self.info_, ensure_ascii=False)
+
+    def parse_info(self, emby_media_info):
+        series_item = emby_media_info["Item"]
+        series_name = series_item.get("Name") or series_item.get("SeriesName")
+        if not series_name:
+            raise ValueError("Series batch event has no series name.")
+
+        premiere_date = str(
+            series_item.get("PremiereDate")
+            or series_item.get("ProductionYear")
+            or datetime.now().year
+        )
+        provider_ids = series_item.get("ProviderIds") or {}
+        server_url = emby_media_info["Server"]["Url"]
+        emby_image = get_emby_primary_image(series_item, server_url)
+
+        self.info_["Name"] = series_name
+        self.info_["ProviderIds"] = provider_ids
+        self.media_detail_["server_type"] = emby_media_info["Server"]["Type"]
+        self.media_detail_["server_name"] = emby_media_info["Server"]["Name"]
+        self.media_detail_["server_url"] = server_url
+        self.media_detail_["media_name"] = series_name
+        self.media_detail_["media_type"] = "Series"
+        self.media_detail_["media_rating"] = series_item.get(
+            "CommunityRating", 0
+        )
+        self.media_detail_["media_rel"] = premiere_date
+        self.media_detail_["media_intro"] = series_item.get(
+            "Overview", "暂无简介"
+        )
+        tmdb_id = provider_ids.get("Tmdb")
+        self.media_detail_["media_tmdburl"] = (
+            f"https://www.themoviedb.org/tv/{tmdb_id}?language=zh-CN"
+            if tmdb_id
+            else server_url
+        )
+        self.media_detail_["media_poster"] = emby_image
+        self.media_detail_["media_backdrop"] = emby_image
+        self.media_detail_["media_still"] = emby_image
+        self.media_detail_["batch_count"] = get_batch_item_count(
+            emby_media_info
+        )
+        log.logger.debug(self.info_)
+
+    def get_details(self):
+        # Series-level Emby events already contain the metadata needed for a
+        # single batch card. Avoid turning one batch into many TMDB requests.
+        return
+
+    def send_caption(self):
+        sender.Sender.send_media_details(self.media_detail_)
+
+
 def create_media(emby_media_info):
     if emby_media_info["Item"]["Type"] == "Movie":
         return Movie()
     elif emby_media_info["Item"]["Type"] == "Episode":
         return Episode()
+    elif emby_media_info["Item"]["Type"] == "Series":
+        return SeriesBatch()
     else:
         raise Exception("Unsupported media type.")
 

@@ -88,6 +88,64 @@ class WechatNewsTest(unittest.TestCase):
             "?maxWidth=1000&quality=90",
         )
 
+    @patch("media.sender.Sender")
+    def test_series_batch_event_sends_one_card(self, sender_manager):
+        event = {
+            "Title": "酸菜鱼 上已添加了 10 项到 金特务：本色回归",
+            "Event": "library.new",
+            "Item": {
+                "Id": "22678",
+                "Type": "Series",
+                "Name": "金特务：本色回归",
+                "ProductionYear": 2026,
+                "ProviderIds": {"Tmdb": "296206"},
+                "ImageTags": {"Primary": "image-tag"},
+                "Overview": "一部测试剧集",
+            },
+            "Server": {
+                "Name": "酸菜鱼",
+                "Version": "4.9.3.0",
+            },
+        }
+
+        media.process_media(json.dumps(event, ensure_ascii=False))
+
+        sender_manager.send_media_details.assert_called_once()
+        payload = sender_manager.send_media_details.call_args.args[0]
+        self.assertEqual(payload["media_type"], "Series")
+        self.assertEqual(payload["media_name"], "金特务：本色回归")
+        self.assertEqual(payload["batch_count"], 10)
+        self.assertEqual(
+            payload["media_tmdburl"],
+            "https://www.themoviedb.org/tv/296206?language=zh-CN",
+        )
+        self.assertEqual(
+            payload["media_still"],
+            "https://avemby.aabbss.de/Items/22678/Images/Primary"
+            "?maxWidth=1000&quality=90",
+        )
+
+    @patch("sender.wxapp.send_news")
+    def test_series_batch_news_title_includes_item_count(self, send_news):
+        payload = {
+            "server_name": "酸菜鱼",
+            "server_type": "Emby",
+            "server_url": "https://avemby.aabbss.de",
+            "media_type": "Series",
+            "media_name": "金特务：本色回归",
+            "media_rel": "2026",
+            "media_intro": "一部测试剧集",
+            "media_tmdburl": "https://www.themoviedb.org/tv/296206",
+            "media_still": "https://avemby.aabbss.de/Items/22678/Images/Primary",
+            "batch_count": 10,
+        }
+
+        WechatAppSender().send_media_details(payload)
+
+        article = send_news.call_args.args[0]
+        self.assertIn("[剧集批量]", article["title"])
+        self.assertIn("本次入库 10 集", article["title"])
+
     @patch(
         "media.tmdb_api.get_tv_episode_still_paths",
         return_value=(None, "missing still"),
